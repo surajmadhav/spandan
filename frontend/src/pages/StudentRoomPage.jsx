@@ -28,6 +28,44 @@ function StudentRoomPage() {
   // Past responses loaded from MongoDB - no sessionStorage needed
   const [pastResponses, setPastResponses] = useState([])
   const timerIntervalRef = useRef(null)
+  
+  // Poll Incoming state
+  const [pollCountdown, setPollCountdown] = useState(null)
+  const pollTimerRef = useRef(null)
+
+  const playPleasantChime = () => {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext
+      if (!AudioContext) return
+      const ctx = new AudioContext()
+      
+      const playNote = (freq, startTime, duration) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        
+        osc.type = 'sine'
+        osc.frequency.setValueAtTime(freq, startTime)
+        
+        gain.gain.setValueAtTime(0, startTime)
+        gain.gain.linearRampToValueAtTime(0.2, startTime + 0.1)
+        gain.gain.exponentialRampToValueAtTime(0.01, startTime + duration)
+        
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        
+        osc.start(startTime)
+        osc.stop(startTime + duration)
+      }
+
+      const now = ctx.currentTime
+      playNote(523.25, now, 1.5)       // C5
+      playNote(659.25, now + 0.15, 1.5) // E5
+      playNote(783.99, now + 0.3, 2.0)  // G5
+      playNote(1046.50, now + 0.45, 2.5) // C6
+    } catch (err) {
+      console.error('Audio play failed:', err)
+    }
+  }
 
   useEffect(() => {
     if (!token || !socket) return
@@ -94,6 +132,13 @@ function StudentRoomPage() {
     }
 
     const handleNewQuestion = (question) => {
+      // Clear poll prepare countdown if it was running
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current)
+        pollTimerRef.current = null
+      }
+      setPollCountdown(null)
+
       // Handle manually created questions from teacher
       // Clear any existing timer
       if (timerIntervalRef.current) {
@@ -123,9 +168,27 @@ function StudentRoomPage() {
       }, 1000)
     }
 
+    const handlePreparePoll = () => {
+      playPleasantChime()
+      setPollCountdown(5)
+      
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+      
+      let count = 5
+      pollTimerRef.current = setInterval(() => {
+        count -= 1
+        setPollCountdown(count > 0 ? count : null)
+        if (count <= 0) {
+          clearInterval(pollTimerRef.current)
+          pollTimerRef.current = null
+        }
+      }, 1000)
+    }
+
     socket.on('question:started', handleQuestionStarted)
     socket.on('question:ended', handleQuestionEnded)
     socket.on('new_question', handleNewQuestion)
+    socket.on('prepare_poll', handlePreparePoll)
     socket.on('room:ended', () => {
       navigate(`/student/room/${room?._id}/results`)
     })
@@ -134,7 +197,9 @@ function StudentRoomPage() {
       socket.off('question:started', handleQuestionStarted)
       socket.off('question:ended', handleQuestionEnded)
       socket.off('new_question', handleNewQuestion)
+      socket.off('prepare_poll', handlePreparePoll)
       socket.off('room:ended')
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
     }
   }, [socket, navigate, room?._id])
 
@@ -769,6 +834,53 @@ function StudentRoomPage() {
           )}
         </div>
       </div>
+
+      {/* Poll Incoming Countdown Overlay (Student Side) */}
+      {pollCountdown !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          color: 'white',
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{ 
+            fontSize: '48px', 
+            fontWeight: 'bold', 
+            marginBottom: '30px', 
+            color: '#10b981',
+            textShadow: '0 4px 20px rgba(16, 185, 129, 0.4)'
+          }}>
+            Get Ready! 🚀
+          </div>
+          <div style={{ fontSize: '24px', marginBottom: '40px', color: '#d1d5db' }}>
+            A new poll is incoming...
+          </div>
+          <div style={{ 
+            fontSize: '120px', 
+            fontWeight: 'bold', 
+            background: 'linear-gradient(135deg, #34d399, #10b981)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            animation: 'pulse 1s infinite'
+          }}>
+            {pollCountdown}
+          </div>
+          <style>{`
+            @keyframes pulse {
+              0% { transform: scale(1); opacity: 1; }
+              50% { transform: scale(1.1); opacity: 0.8; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
+
     </div>
   )
 }

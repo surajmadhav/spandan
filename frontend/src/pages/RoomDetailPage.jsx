@@ -85,6 +85,7 @@ function RoomDetailPage() {
   const [segmentTimerValue, setSegmentTimerValue] = useState(0) // frozen value when paused
   // Pending review state - when timer hits zero and questions auto-generated
   const [isPendingReview, setIsPendingReview] = useState(false)
+  const [pollCountdown, setPollCountdown] = useState(null) // 5s countdown state before pushing question
   const [generateQEnabled, setGenerateQEnabled] = useState(true) // fail-safe button
   const [roomSettings, setRoomSettings] = useState({
     segmentTime: 2,
@@ -800,6 +801,33 @@ function RoomDetailPage() {
     setIsGeneratingQuestions(false)
   }
 
+  const broadcastQuestionWithCountdown = (question) => {
+    if (!socket || !isConnected) return;
+    
+    // Emit prepare_poll to show countdown on student side
+    socket.emit('prepare_poll', {
+      roomCode: room.code
+    });
+    
+    // Set local UI countdown on teacher side
+    setPollCountdown(5);
+    let count = 5;
+    
+    const interval = setInterval(() => {
+      count -= 1;
+      setPollCountdown(count > 0 ? count : null);
+      
+      if (count <= 0) {
+        clearInterval(interval);
+        // Emit actual question to students
+        socket.emit('new_question', {
+          roomCode: room.code,
+          question: question
+        });
+      }
+    }, 1000);
+  };
+
   const handleApproveQuestion = async (question) => {
     try {
       const response = await fetch(`${API_URL}/questions`, {
@@ -824,14 +852,7 @@ function RoomDetailPage() {
       if (response.ok) {
         const data = await response.json()
         setGeneratedQuestions(prev => [data.question, ...prev])
-
-        // Emit to students via socket
-        if (socket && isConnected) {
-          socket.emit('new_question', {
-            roomCode: room.code,
-            question: data.question
-          })
-        }
+        broadcastQuestionWithCountdown(data.question)
       }
     } catch (error) {
       console.error('Failed to save question:', error)
@@ -867,13 +888,7 @@ function RoomDetailPage() {
       if (response.ok) {
         const data = await response.json()
         setGeneratedQuestions(prev => [data.question, ...prev])
-
-        if (socket && isConnected) {
-          socket.emit('new_question', {
-            roomCode: room.code,
-            question: data.question
-          })
-        }
+        broadcastQuestionWithCountdown(data.question)
       }
     } catch (error) {
       console.error('Failed to save text question:', error)
@@ -911,18 +926,8 @@ function RoomDetailPage() {
       if (response.ok) {
         const data = await response.json()
         setGeneratedQuestions(prev => [data.question, ...prev])
-
-        // Emit to socket for students to receive (include roomCode)
-        console.log('Emitting new_question event:', { roomCode: room.code, question: data.question })
-        console.log('Socket connected:', !!socket, 'isConnected:', isConnected, 'isRoomJoined:', isRoomJoined)
-        if (socket && isConnected) {
-          socket.emit('new_question', {
-            roomCode: room.code,
-            question: data.question
-          })
-          console.log('new_question event emitted successfully')
-        } else {
-          console.error('Socket not available or not connected:', { socket: !!socket, isConnected })
+        broadcastQuestionWithCountdown(data.question)
+      }
         }
       } else {
         const errorData = await response.json()
@@ -1730,6 +1735,39 @@ function RoomDetailPage() {
           50% { transform: scale(1.1); }
         }
       `}</style>
+
+      {/* Poll Incoming Countdown Overlay (Teacher Side) */}
+      {pollCountdown !== null && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          color: 'white',
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{ fontSize: '32px', fontWeight: 'bold', marginBottom: '20px', color: '#10b981' }}>
+            Sending Poll to Students...
+          </div>
+          <div style={{ 
+            fontSize: '96px', 
+            fontWeight: 'bold', 
+            background: 'linear-gradient(135deg, #34d399, #10b981)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            animation: 'pulse 1s infinite'
+          }}>
+            {pollCountdown}
+          </div>
+          <div style={{ marginTop: '20px', fontSize: '18px', color: '#9ca3af' }}>
+            Students are seeing a "Get Ready" screen
+          </div>
+        </div>
+      )}
     </div>
   )
 }

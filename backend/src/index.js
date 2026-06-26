@@ -273,6 +273,14 @@ io.on('connection', (socket) => {
     })
   })
 
+  // Prepare poll (countdown before question)
+  socket.on('prepare_poll', (data) => {
+    console.log('Prepare poll signal received for room:', data.roomCode)
+    if (data.roomCode) {
+      io.to(data.roomCode).emit('prepare_poll', data)
+    }
+  })
+
   // New question from teacher (manually created)
   socket.on('new_question', (data) => {
     console.log('New question received from teacher:', data.question?.question?.substring(0, 50))
