@@ -33,6 +33,30 @@ function StudentRoomPage() {
   const [pollCountdown, setPollCountdown] = useState(null)
   const pollTimerRef = useRef(null)
 
+  // Doubt Raising state
+  const [showDoubtModal, setShowDoubtModal] = useState(false)
+  const [doubtText, setDoubtText] = useState('')
+  const [doubtStatus, setDoubtStatus] = useState(null) // 'success' or null
+
+  const submitDoubt = () => {
+    if (!socket || !isConnected || !room) return
+    socket.emit('raise_doubt', {
+      doubtId: Date.now().toString(),
+      roomCode: room.code,
+      userId: user._id,
+      userName: user.name,
+      message: doubtText.trim() || 'Needs clarification at this point',
+      timestamp: new Date().toISOString()
+    })
+    
+    setDoubtStatus('success')
+    setDoubtText('')
+    setTimeout(() => {
+      setShowDoubtModal(false)
+      setDoubtStatus(null)
+    }, 2000)
+  }
+
   const playPleasantChime = () => {
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext
@@ -878,6 +902,122 @@ function StudentRoomPage() {
               100% { transform: scale(1); opacity: 1; }
             }
           `}</style>
+        </div>
+      )}
+
+      {/* Raise Doubt Floating Button */}
+      <button
+        onClick={() => setShowDoubtModal(true)}
+        style={{
+          position: 'fixed',
+          bottom: '30px',
+          right: '30px',
+          padding: '16px 24px',
+          background: 'var(--primary)',
+          color: 'var(--bg-card)',
+          border: 'none',
+          borderRadius: '30px',
+          fontSize: '16px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          boxShadow: '0 4px 12px rgba(16, 185, 129, 0.4)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          zIndex: 100
+        }}
+      >
+        <span style={{ fontSize: '20px' }}>🙋‍♂️</span> Raise Doubt
+      </button>
+
+      {/* Raise Doubt Modal */}
+      {showDoubtModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+          backdropFilter: 'blur(4px)'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            padding: '30px',
+            borderRadius: '16px',
+            width: '90%',
+            maxWidth: '400px',
+            boxShadow: 'var(--card-shadow)',
+            border: '1px solid var(--border-color)'
+          }}>
+            <h2 style={{ margin: '0 0 16px 0', color: 'var(--text-primary)', fontSize: '20px' }}>
+              Raise a Doubt
+            </h2>
+            
+            {doubtStatus === 'success' ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: '#10b981' }}>
+                <div style={{ fontSize: '40px', marginBottom: '10px' }}>✅</div>
+                <p style={{ margin: 0, fontWeight: 'bold' }}>Doubt sent to Teacher!</p>
+              </div>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
+                  The teacher will be notified that you have a doubt at this exact moment. You can optionally add a quick note.
+                </p>
+                <textarea
+                  value={doubtText}
+                  onChange={(e) => setDoubtText(e.target.value)}
+                  placeholder="What's confusing you? (Optional)"
+                  rows="3"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: '1px solid var(--border-color)',
+                    background: 'var(--bg-main)',
+                    color: 'var(--text-primary)',
+                    marginBottom: '20px',
+                    resize: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                  <button
+                    onClick={() => {
+                      setShowDoubtModal(false)
+                      setDoubtText('')
+                    }}
+                    style={{
+                      padding: '10px 16px',
+                      background: 'transparent',
+                      color: 'var(--text-secondary)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={submitDoubt}
+                    style={{
+                      padding: '10px 16px',
+                      background: 'var(--primary)',
+                      color: 'var(--bg-card)',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: '600'
+                    }}
+                  >
+                    Submit Doubt
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
 

@@ -298,6 +298,19 @@ io.on('connection', (socket) => {
     io.to(data.roomCode).emit('leaderboard:updated', data)
   })
 
+  // Doubt Raising System
+  socket.on('raise_doubt', (data) => {
+    console.log(`Doubt raised by ${data.userName} in room ${data.roomCode}: ${data.message}`)
+    // Broadcast to the room (Teacher side will pick this up)
+    io.to(data.roomCode).emit('doubt_raised', data)
+  })
+
+  socket.on('resolve_doubt', (data) => {
+    console.log(`Doubt resolved in room ${data.roomCode}: ${data.doubtId}`)
+    // Broadcast to the room
+    io.to(data.roomCode).emit('doubt_resolved', data)
+  })
+
   socket.on('disconnect', () => {
     const userId = connectedUsers.get(socket.id)
     connectedUsers.delete(socket.id)

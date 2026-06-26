@@ -98,6 +98,10 @@ function RoomDetailPage() {
   const [totalParticipants, setTotalParticipants] = useState(0)
   const [answerCounts, setAnswerCounts] = useState({}) // questionId -> count
 
+  // Doubt Raising System state
+  const [doubts, setDoubts] = useState([])
+  const [showDoubtsPanel, setShowDoubtsPanel] = useState(false)
+
   useEffect(() => {
     if (token) {
       setAuthToken(token)
@@ -157,6 +161,29 @@ function RoomDetailPage() {
     }
     socket.on('response:new', handleNewResponse)
     return () => socket.off('response:new', handleNewResponse)
+  }, [socket])
+
+  // Listen for doubt events
+  useEffect(() => {
+    if (!socket) return
+    
+    const handleDoubtRaised = (data) => {
+      console.log('New doubt raised:', data)
+      setDoubts(prev => [data, ...prev])
+      // Optional: play a soft notification sound for the teacher
+    }
+
+    const handleDoubtResolved = (data) => {
+      setDoubts(prev => prev.filter(d => d.doubtId !== data.doubtId))
+    }
+
+    socket.on('doubt_raised', handleDoubtRaised)
+    socket.on('doubt_resolved', handleDoubtResolved)
+
+    return () => {
+      socket.off('doubt_raised', handleDoubtRaised)
+      socket.off('doubt_resolved', handleDoubtResolved)
+    }
   }, [socket])
 
   // Listen for question launch events to show timer to teacher
@@ -1176,6 +1203,43 @@ function RoomDetailPage() {
               </button>
             )}
 
+            {/* Doubts Button */}
+            {!isEnded && (
+              <button 
+                onClick={() => setShowDoubtsPanel(!showDoubtsPanel)} 
+                style={{
+                  padding: '8px 16px',
+                  background: doubts.length > 0 ? '#ef4444' : 'var(--nav-hover)',
+                  color: doubts.length > 0 ? 'white' : 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  position: 'relative',
+                  transition: 'background 0.2s'
+                }}
+              >
+                🙋‍♂️ Doubts 
+                {doubts.length > 0 && (
+                  <span style={{
+                    background: 'white',
+                    color: '#ef4444',
+                    borderRadius: '12px',
+                    padding: '2px 8px',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    marginLeft: '4px'
+                  }}>
+                    {doubts.length}
+                  </span>
+                )}
+              </button>
+            )}
+
             {/* Settings Dropdown */}
             <div style={{ position: 'relative' }} ref={settingsRef}>
               <button
@@ -1719,6 +1783,104 @@ function RoomDetailPage() {
           onNext={handleTextQuestionClose}
           isLast={true}
         />
+      )}
+
+      {/* Doubts Sliding Panel */}
+      {showDoubtsPanel && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          width: '350px',
+          height: '100%',
+          background: 'var(--bg-card)',
+          boxShadow: '-4px 0 24px rgba(0,0,0,0.2)',
+          zIndex: 2000,
+          display: 'flex',
+          flexDirection: 'column',
+          borderLeft: '1px solid var(--border-color)',
+          transition: 'transform 0.3s ease-in-out'
+        }}>
+          <div style={{
+            padding: '20px',
+            borderBottom: '1px solid var(--border-color)',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center'
+          }}>
+            <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              🙋‍♂️ Active Doubts
+              <span style={{
+                background: '#ef4444',
+                color: 'white',
+                borderRadius: '12px',
+                padding: '2px 8px',
+                fontSize: '12px'
+              }}>{doubts.length}</span>
+            </h2>
+            <button 
+              onClick={() => setShowDoubtsPanel(false)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                fontSize: '24px',
+                cursor: 'pointer',
+                padding: '4px'
+              }}
+            >&times;</button>
+          </div>
+          
+          <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+            {doubts.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-secondary)', marginTop: '40px' }}>
+                <div style={{ fontSize: '40px', opacity: 0.5, marginBottom: '10px' }}>🙌</div>
+                <p>No active doubts right now.<br/>Everyone is following along!</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                {doubts.map(doubt => (
+                  <div key={doubt.doubtId} style={{
+                    background: 'var(--bg-main)',
+                    borderRadius: '12px',
+                    padding: '16px',
+                    border: '1px solid var(--border-color)',
+                    borderLeft: '4px solid #ef4444'
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{doubt.userName}</span>
+                      <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                        {new Date(doubt.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>
+                      {doubt.message}
+                    </p>
+                    <button
+                      onClick={() => {
+                        socket.emit('resolve_doubt', { roomCode: room.code, doubtId: doubt.doubtId })
+                      }}
+                      style={{
+                        width: '100%',
+                        padding: '8px',
+                        background: 'transparent',
+                        color: '#10b981',
+                        border: '1px solid #10b981',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        fontWeight: '600',
+                        fontSize: '13px',
+                        transition: 'all 0.2s'
+                      }}
+                    >
+                      ✓ Mark as Resolved
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       <style>{`
