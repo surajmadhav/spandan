@@ -32,7 +32,8 @@ router.post('/generate', authorize('teacher'), async (req, res) => {
       numQuestions = 2, 
       difficulty = 'medium',
       provider = 'minimax',
-      questionTypeMix = null
+      questionTypeMix = null,
+      tone = 'professional'
     } = config || {}
 
     if (!transcript || transcript.trim().length === 0) {
@@ -42,13 +43,14 @@ router.post('/generate', authorize('teacher'), async (req, res) => {
       })
     }
 
-    console.log(`Generating ${numQuestions} questions with ${provider}...`)
+    console.log(`Generating ${numQuestions} questions with ${provider} (tone: ${tone})...`)
 
     const questions = await generateQuestions(transcript, {
       numQuestions,
       difficulty,
       provider,
-      questionTypeMix
+      questionTypeMix,
+      tone
     })
 
     console.log(`Generated ${questions.length} questions successfully`)

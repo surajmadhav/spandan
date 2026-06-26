@@ -427,7 +427,7 @@ function RoomDetailPage() {
   }
 
   // Handle question generation from pasted text (TextToQuestionsPopup)
-  const handleTextToQuestionsGenerate = async (text, mode) => {
+  const handleTextToQuestionsGenerate = async (text, mode, tone = 'professional') => {
     setShowTextToQuestions(false) // Close the text popup
     setShowGeneratingPopup(true)  // Show generating popup
     setIsGeneratingFromText(true)
@@ -449,7 +449,8 @@ function RoomDetailPage() {
             numQuestions: roomSettings.questionsPerSegment,
             difficulty: roomSettings.difficulty,
             provider: roomSettings.questionProvider || 'minimax',
-            questionTypeMix: typeMix
+            questionTypeMix: typeMix,
+            tone: tone
           }
         })
       })

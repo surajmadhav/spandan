@@ -216,8 +216,40 @@ function generateFromMix(questionTypeMix, numQuestions) {
   return types.slice(0, numQuestions)
 }
 
+// Tone instructions for AI prompt
+function getToneInstructions(tone) {
+  switch (tone) {
+    case 'fun':
+      return `\nTONE: Fun & Engaging
+- Use casual, conversational language
+- Add humor, wit, or relatable analogies where appropriate
+- Make questions feel like a fun challenge, not an exam
+- Use everyday language and pop-culture references when possible
+- Example style: "Your code keeps calling itself until it crashes — sounds like your Monday! What's this concept called?"`
+    case 'technical':
+      return `\nTONE: Technical & Precise
+- Use precise technical terminology and domain-specific jargon
+- Questions should test deep understanding, not surface knowledge
+- Include specific details like method names, protocols, or standards where relevant
+- Example style: "What is the time complexity of the recursive Fibonacci implementation without memoization?"`
+    case 'simple':
+      return `\nTONE: Simple & Beginner-Friendly
+- Use very simple, easy-to-understand language
+- Avoid jargon — explain concepts in everyday words
+- Questions should be approachable for absolute beginners
+- Use short sentences and familiar comparisons
+- Example style: "When a function calls itself again and again, what do we call this?"`
+    case 'professional':
+    default:
+      return `\nTONE: Professional & Academic
+- Use formal, textbook-style language
+- Questions should be clear, precise, and academically structured
+- Suitable for exams, assessments, and formal quizzes`
+  }
+}
+
 // Build prompt for question generation
-function buildQuestionPrompt(transcript, questionTypes, difficulty) {
+function buildQuestionPrompt(transcript, questionTypes, difficulty, tone = 'professional') {
   const typeInstructions = questionTypes.map((type, index) => {
     switch (type) {
       case 'MCQ':
@@ -231,12 +263,15 @@ function buildQuestionPrompt(transcript, questionTypes, difficulty) {
     }
   }).join('\n')
 
+  const toneInstructions = getToneInstructions(tone)
+
   return `You are an expert quiz question generator. Based on the following transcription, generate ${questionTypes.length} quiz questions.
 
 TRANSCRIPTION:
 ${transcript}
 
 DIFFICULTY: ${difficulty.toUpperCase()}
+${toneInstructions}
 
 QUESTION TYPES (follow exactly):
 ${typeInstructions}
@@ -283,7 +318,8 @@ IMPORTANT:
 - Make questions clear and unambiguous
 - Ensure wrong options for MCQ are plausible but clearly wrong
 - For MSQ, ensure at least 2 options are correct
-- Questions should be based ONLY on the transcription content`
+- Questions should be based ONLY on the transcription content
+- FOLLOW THE TONE INSTRUCTIONS CAREFULLY — the style of language matters`
 }
 
 // Parse questions from AI response
@@ -484,7 +520,7 @@ async function generateWithGoogle(prompt, model = 'gemini-2.0-flash') {
 
 // Main question generation function
 export async function generateQuestions(transcript, cfg) {
-  const { numQuestions = 2, difficulty = 'medium', provider = 'minimax', questionTypeMix = null } = cfg || {}
+  const { numQuestions = 2, difficulty = 'medium', provider = 'minimax', questionTypeMix = null, tone = 'professional' } = cfg || {}
 
   if (!transcript || transcript.trim().length === 0) {
     throw new Error('Transcript is required')
@@ -494,7 +530,7 @@ export async function generateQuestions(transcript, cfg) {
   const questionTypes = questionTypeMix 
     ? generateFromMix(questionTypeMix, numQuestions)
     : getQuestionTypeMix(numQuestions)
-  const prompt = buildQuestionPrompt(transcript, questionTypes, difficulty)
+  const prompt = buildQuestionPrompt(transcript, questionTypes, difficulty, tone)
 
   console.log(`Generating ${numQuestions} questions with ${provider}...`)
 
