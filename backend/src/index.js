@@ -338,14 +338,23 @@ const connectDB = async () => {
     const mongoUri = process.env.MONGODB_URI || 'mongodb://localhost:27017/spandan'
     
     await mongoose.connect(mongoUri, {
-      serverSelectionTimeoutMS: 5000,
+      serverSelectionTimeoutMS: 2000,
       socketTimeoutMS: 45000
     })
     
     console.log('MongoDB connected successfully')
   } catch (error) {
-    console.error('MongoDB connection error:', error.message)
-    console.log('Server will continue without database connection')
+    console.warn('Local/Cloud MongoDB not reachable, starting automatic in-memory MongoDB...')
+    try {
+      const { MongoMemoryServer } = await import('mongodb-memory-server')
+      const mongoServer = await MongoMemoryServer.create()
+      const memoryUri = mongoServer.getUri()
+      await mongoose.connect(memoryUri)
+      console.log('In-memory MongoDB started and connected successfully!')
+    } catch (memError) {
+      console.error('In-memory MongoDB fallback failed:', memError.message)
+      console.log('Server will continue without database connection')
+    }
   }
 }
 
