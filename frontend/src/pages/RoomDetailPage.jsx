@@ -954,8 +954,6 @@ function RoomDetailPage() {
         const data = await response.json()
         setGeneratedQuestions(prev => [data.question, ...prev])
         broadcastQuestionWithCountdown(data.question)
-      }
-        }
       } else {
         const errorData = await response.json()
         console.error('Failed to save question:', errorData)
