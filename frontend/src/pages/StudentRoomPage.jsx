@@ -37,17 +37,41 @@ function StudentRoomPage() {
   const [showDoubtModal, setShowDoubtModal] = useState(false)
   const [doubtText, setDoubtText] = useState('')
   const [doubtStatus, setDoubtStatus] = useState(null) // 'success' or null
+  const [myDoubts, setMyDoubts] = useState([])
+
+  useEffect(() => {
+    if (!socket) return
+    const handleDoubtsHistory = (list) => {
+      if (user?._id) {
+        setMyDoubts(list.filter(d => d.userId === user._id))
+      } else {
+        setMyDoubts(list)
+      }
+    }
+    const handleDoubtResolved = (data) => {
+      setMyDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, resolved: true, reply: data.reply || d.reply } : d))
+    }
+    socket.on('doubts_history', handleDoubtsHistory)
+    socket.on('doubt_resolved', handleDoubtResolved)
+    return () => {
+      socket.off('doubts_history', handleDoubtsHistory)
+      socket.off('doubt_resolved', handleDoubtResolved)
+    }
+  }, [socket, user?._id])
 
   const submitDoubt = () => {
     if (!socket || !isConnected || !room) return
-    socket.emit('raise_doubt', {
+    const doubtObj = {
       doubtId: Date.now().toString(),
       roomCode: room.code,
       userId: user._id,
       userName: user.name,
       message: doubtText.trim() || 'Needs clarification at this point',
-      timestamp: new Date().toISOString()
-    })
+      timestamp: new Date().toISOString(),
+      resolved: false
+    }
+    socket.emit('raise_doubt', doubtObj)
+    setMyDoubts(prev => [doubtObj, ...prev])
     
     setDoubtStatus('success')
     setDoubtText('')
@@ -685,6 +709,55 @@ function StudentRoomPage() {
                 </p>
               </div>
 
+              {/* My Raised Doubts Log */}
+              {myDoubts.length > 0 && (
+                <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--card-shadow)', border: '1px solid var(--border-color)', marginBottom: '24px', width: '100%', boxSizing: 'border-box' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    🙋‍♂️ My Raised Doubts ({myDoubts.length})
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {myDoubts.map((d, idx) => (
+                      <div key={d.doubtId || idx} style={{
+                        padding: '16px',
+                        background: 'var(--bg-primary)',
+                        borderRadius: '12px',
+                        border: '1px solid var(--border-color)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '12px'
+                      }}>
+                        <div>
+                          <p style={{ margin: '0 0 6px 0', fontWeight: '600', color: 'var(--text-primary)' }}>
+                            "{d.message}"
+                          </p>
+                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                            {new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <span style={{
+                          padding: '6px 14px',
+                          borderRadius: '20px',
+                          fontSize: '13px',
+                          fontWeight: '700',
+                          background: d.resolved ? '#d1fae5' : '#fef3c7',
+                          color: d.resolved ? '#059669' : '#d97706',
+                          border: `1px solid ${d.resolved ? '#10b981' : '#f59e0b'}`
+                        }}>
+                          {d.resolved ? '✅ Resolved by Teacher' : '⏳ Pending Review'}
+                        </span>
+                        {d.reply && (
+                          <div style={{ width: '100%', marginTop: '10px', padding: '10px 14px', background: '#ecfdf5', borderRadius: '8px', borderLeft: '4px solid #10b981', color: '#065f46', fontSize: '13px' }}>
+                            <strong>💬 Teacher Reply:</strong> {d.reply}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Past Questions (flex) + Leaderboard (flex) */}
               <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', width: '100%', boxSizing: 'border-box' }}>
                 {/* Past Questions - flexible width */}
@@ -913,8 +986,8 @@ function StudentRoomPage() {
           bottom: '30px',
           right: '30px',
           padding: '16px 24px',
-          background: 'var(--primary)',
-          color: 'var(--bg-card)',
+          background: '#10b981',
+          color: '#ffffff',
           border: 'none',
           borderRadius: '30px',
           fontSize: '16px',
@@ -1004,8 +1077,8 @@ function StudentRoomPage() {
                     onClick={submitDoubt}
                     style={{
                       padding: '10px 16px',
-                      background: 'var(--primary)',
-                      color: 'var(--bg-card)',
+                      background: '#10b981',
+                      color: '#ffffff',
                       border: 'none',
                       borderRadius: '8px',
                       cursor: 'pointer',

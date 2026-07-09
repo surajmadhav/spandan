@@ -100,6 +100,8 @@ function RoomDetailPage() {
 
   // Doubt Raising System state
   const [doubts, setDoubts] = useState([])
+  const [resolvedDoubts, setResolvedDoubts] = useState([])
+  const [replyTexts, setReplyTexts] = useState({})
   const [showDoubtsPanel, setShowDoubtsPanel] = useState(false)
 
   useEffect(() => {
@@ -121,10 +123,11 @@ function RoomDetailPage() {
   }, [roomId])
 
   useEffect(() => {
-    if (room?.code && user?._id) {
+    if (room?.code && user?._id && isConnected && socket) {
+      console.log('Teacher joining socket room:', room.code)
       joinRoom(room.code, user._id)
     }
-  }, [room?.code, user?._id])
+  }, [room?.code, user?._id, isConnected, socket])
 
   // Listen for room:joined event
   useEffect(() => {
@@ -167,20 +170,32 @@ function RoomDetailPage() {
   useEffect(() => {
     if (!socket) return
     
+    const handleDoubtsHistory = (list) => {
+      setDoubts(list.filter(d => !d.resolved))
+      setResolvedDoubts(list.filter(d => d.resolved))
+    }
+
     const handleDoubtRaised = (data) => {
       console.log('New doubt raised:', data)
       setDoubts(prev => [data, ...prev])
-      // Optional: play a soft notification sound for the teacher
     }
 
     const handleDoubtResolved = (data) => {
-      setDoubts(prev => prev.filter(d => d.doubtId !== data.doubtId))
+      setDoubts(prev => {
+        const d = prev.find(item => item.doubtId === data.doubtId)
+        if (d) {
+          setResolvedDoubts(r => [{ ...d, reply: data.reply || d.reply, resolvedAt: new Date() }, ...r])
+        }
+        return prev.filter(item => item.doubtId !== data.doubtId)
+      })
     }
 
+    socket.on('doubts_history', handleDoubtsHistory)
     socket.on('doubt_raised', handleDoubtRaised)
     socket.on('doubt_resolved', handleDoubtResolved)
 
     return () => {
+      socket.off('doubts_history', handleDoubtsHistory)
       socket.off('doubt_raised', handleDoubtRaised)
       socket.off('doubt_resolved', handleDoubtResolved)
     }
@@ -1854,16 +1869,34 @@ function RoomDetailPage() {
                     <p style={{ margin: '0 0 12px 0', fontSize: '14px', color: 'var(--text-secondary)' }}>
                       {doubt.message}
                     </p>
+                    <input
+                      type="text"
+                      placeholder="Write a reply (optional)..."
+                      value={replyTexts[doubt.doubtId] || ''}
+                      onChange={(e) => setReplyTexts({ ...replyTexts, [doubt.doubtId]: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '8px 12px',
+                        borderRadius: '6px',
+                        border: '1px solid var(--border-color)',
+                        background: 'var(--bg-card)',
+                        color: 'var(--text-primary)',
+                        marginBottom: '10px',
+                        fontSize: '13px',
+                        boxSizing: 'border-box'
+                      }}
+                    />
                     <button
                       onClick={() => {
-                        socket.emit('resolve_doubt', { roomCode: room.code, doubtId: doubt.doubtId })
+                        const reply = replyTexts[doubt.doubtId] || null
+                        socket.emit('resolve_doubt', { roomCode: room.code, doubtId: doubt.doubtId, reply })
                       }}
                       style={{
                         width: '100%',
                         padding: '8px',
-                        background: 'transparent',
-                        color: '#10b981',
-                        border: '1px solid #10b981',
+                        background: '#10b981',
+                        color: 'white',
+                        border: 'none',
                         borderRadius: '6px',
                         cursor: 'pointer',
                         fontWeight: '600',
@@ -1871,10 +1904,35 @@ function RoomDetailPage() {
                         transition: 'all 0.2s'
                       }}
                     >
-                      ✓ Mark as Resolved
+                      💬 Reply & Mark Resolved
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {resolvedDoubts.length > 0 && (
+              <div style={{ marginTop: '28px', borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
+                <h4 style={{ fontSize: '14px', color: 'var(--text-secondary)', marginBottom: '12px' }}>
+                  ✅ Resolved History ({resolvedDoubts.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {resolvedDoubts.map((d, idx) => (
+                    <div key={d.doubtId || idx} style={{
+                      background: 'var(--bg-main)',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      opacity: 0.75,
+                      borderLeft: '4px solid #10b981'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '4px' }}>
+                        <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{d.userName}</span>
+                        <span style={{ color: '#10b981', fontWeight: '600' }}>Resolved</span>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-secondary)' }}>{d.message}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>

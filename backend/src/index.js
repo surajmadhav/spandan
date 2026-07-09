@@ -129,6 +129,7 @@ app.get('/api/health', (req, res) => {
 
 // Socket.IO connection handling
 const connectedUsers = new Map() // socket.id -> userId
+const roomDoubtsStore = new Map() // roomCode -> Array of doubt objects
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id)
@@ -190,6 +191,9 @@ io.on('connection', (socket) => {
         userId,
         participants: participantCount 
       })
+
+      const existingDoubts = roomDoubtsStore.get(roomCode) || []
+      socket.emit('doubts_history', existingDoubts)
     } catch (error) {
       console.error('Error in room:join:', error)
       io.to(roomCode).emit('room:joined', { 
@@ -301,13 +305,22 @@ io.on('connection', (socket) => {
   // Doubt Raising System
   socket.on('raise_doubt', (data) => {
     console.log(`Doubt raised by ${data.userName} in room ${data.roomCode}: ${data.message}`)
-    // Broadcast to the room (Teacher side will pick this up)
-    io.to(data.roomCode).emit('doubt_raised', data)
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const doubtObj = { ...data, resolved: false, reply: null }
+    list.unshift(doubtObj)
+    roomDoubtsStore.set(data.roomCode, list)
+    io.to(data.roomCode).emit('doubt_raised', doubtObj)
   })
 
   socket.on('resolve_doubt', (data) => {
     console.log(`Doubt resolved in room ${data.roomCode}: ${data.doubtId}`)
-    // Broadcast to the room
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const d = list.find(item => item.doubtId === data.doubtId)
+    if (d) {
+      d.resolved = true
+      d.reply = data.reply || null
+      d.resolvedAt = new Date().toISOString()
+    }
     io.to(data.roomCode).emit('doubt_resolved', data)
   })
 
