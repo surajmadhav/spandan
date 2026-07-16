@@ -234,10 +234,20 @@ function StudentRoomPage() {
       }, 1000)
     }
 
+    // Self-heal after a socket reconnect: the store re-joins the room automatically, but a
+    // question pushed WHILE we were briefly disconnected would have been missed. Re-pull the
+    // room's questions so any missed one surfaces without the student manually refreshing.
+    const handleReconnect = () => {
+      if (room?._id && user?._id) {
+        fetchPastResponses(room._id, user._id)
+      }
+    }
+
     socket.on('question:started', handleQuestionStarted)
     socket.on('question:ended', handleQuestionEnded)
     socket.on('new_question', handleNewQuestion)
     socket.on('prepare_poll', handlePreparePoll)
+    socket.on('connect', handleReconnect)
     socket.on('room:ended', () => {
       navigate(`/student/room/${room?._id}/results`)
     })
@@ -247,6 +257,7 @@ function StudentRoomPage() {
       socket.off('question:ended', handleQuestionEnded)
       socket.off('new_question', handleNewQuestion)
       socket.off('prepare_poll', handlePreparePoll)
+      socket.off('connect', handleReconnect)
       socket.off('room:ended')
       if (pollTimerRef.current) clearInterval(pollTimerRef.current)
     }
