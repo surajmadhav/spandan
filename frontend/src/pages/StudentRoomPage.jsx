@@ -37,45 +37,110 @@ function StudentRoomPage() {
   // Doubt Raising state
   const [showDoubtModal, setShowDoubtModal] = useState(false)
   const [doubtText, setDoubtText] = useState('')
+  const [doubtTopic, setDoubtTopic] = useState('#General')
+  const [customTopic, setCustomTopic] = useState('')
   const [doubtStatus, setDoubtStatus] = useState(null) // 'success' or null
   const [myDoubts, setMyDoubts] = useState([])
+  const [allRoomDoubts, setAllRoomDoubts] = useState([]) // For live peer upvoting
 
   useEffect(() => {
     if (!socket) return
     const handleDoubtsHistory = (list) => {
+      setAllRoomDoubts(list)
       if (user?._id) {
-        setMyDoubts(list.filter(d => d.userId === user._id))
+        setMyDoubts(list.filter(d => d.userId === user._id || (d.upvotes && d.upvotes.includes(user._id))))
       } else {
         setMyDoubts(list)
       }
     }
+    const handleDoubtRaised = (data) => {
+      setAllRoomDoubts(prev => [data, ...prev])
+      if (user?._id && data.userId === user._id) {
+        // Prevent duplicate if local submitDoubt already added it
+        setMyDoubts(prev => prev.some(d => d.doubtId === data.doubtId) ? prev : [data, ...prev])
+      }
+    }
+    const handleDoubtUpvoted = (data) => {
+      setAllRoomDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, ...data, upvotes: data.upvotes } : d))
+      setMyDoubts(prev => {
+        const exists = prev.some(d => d.doubtId === data.doubtId)
+        if (user?._id && data.upvotes && !data.upvotes.includes(user._id) && data.userId !== user._id) {
+          // If this user removed their upvote and is not the asker, remove from myDoubts!
+          return prev.filter(d => d.doubtId !== data.doubtId)
+        } else if (exists) {
+          return prev.map(d => d.doubtId === data.doubtId ? { ...d, ...data, upvotes: data.upvotes } : d)
+        } else if (user?._id && data.upvotes && data.upvotes.includes(user._id)) {
+          // If this user just upvoted, include full data in myDoubts
+          const item = allRoomDoubts.find(d => d.doubtId === data.doubtId) || data
+          return [{ ...item, ...data, upvotes: data.upvotes }, ...prev]
+        }
+        return prev
+      })
+    }
     const handleDoubtResolved = (data) => {
+      setAllRoomDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, resolved: true, reply: data.reply || d.reply } : d))
       setMyDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, resolved: true, reply: data.reply || d.reply } : d))
     }
+    const handleDoubtsBulkResolved = (data) => {
+      const ids = Array.isArray(data.doubtIds) ? data.doubtIds : []
+      const replyMsg = data.reply || 'Resolved during live class explanation'
+      setAllRoomDoubts(prev => prev.map(d => ids.includes(d.doubtId) ? { ...d, resolved: true, reply: replyMsg } : d))
+      setMyDoubts(prev => prev.map(d => ids.includes(d.doubtId) ? {
+        ...d,
+        resolved: true,
+        reply: replyMsg,
+        resolvedAt: data.resolvedAt || new Date().toISOString()
+      } : d))
+    }
+    const handleDoubtReopened = (data) => {
+      setAllRoomDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, resolved: false, reopened: true, reopenReason: data.reopenReason } : d))
+      setMyDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, resolved: false, reopened: true, reopenReason: data.reopenReason } : d))
+    }
+    const handleDoubtAcknowledged = (data) => {
+      setAllRoomDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, acknowledgedUsers: data.acknowledgedUsers, acknowledged: data.acknowledged } : d))
+      setMyDoubts(prev => prev.map(d => d.doubtId === data.doubtId ? { ...d, acknowledgedUsers: data.acknowledgedUsers, acknowledged: data.acknowledged } : d))
+    }
+
     socket.on('doubts_history', handleDoubtsHistory)
+    socket.on('doubt_raised', handleDoubtRaised)
+    socket.on('doubt_upvoted', handleDoubtUpvoted)
     socket.on('doubt_resolved', handleDoubtResolved)
+    socket.on('doubts_bulk_resolved', handleDoubtsBulkResolved)
+    socket.on('doubt_reopened', handleDoubtReopened)
+    socket.on('doubt_acknowledged', handleDoubtAcknowledged)
     return () => {
       socket.off('doubts_history', handleDoubtsHistory)
+      socket.off('doubt_raised', handleDoubtRaised)
+      socket.off('doubt_upvoted', handleDoubtUpvoted)
       socket.off('doubt_resolved', handleDoubtResolved)
+      socket.off('doubts_bulk_resolved', handleDoubtsBulkResolved)
+      socket.off('doubt_reopened', handleDoubtReopened)
+      socket.off('doubt_acknowledged', handleDoubtAcknowledged)
     }
   }, [socket, user?._id])
 
   const submitDoubt = () => {
     if (!socket || !isConnected || !room) return
+    const chosenTopic = customTopic.trim() ? (customTopic.trim().startsWith('#') ? customTopic.trim() : `#${customTopic.trim()}`) : doubtTopic
     const doubtObj = {
       doubtId: Date.now().toString(),
       roomCode: room.code,
       userId: user._id,
       userName: user.name,
       message: doubtText.trim() || 'Needs clarification at this point',
+      topic: chosenTopic,
+      upvotes: [],
       timestamp: new Date().toISOString(),
-      resolved: false
+      resolved: false,
+      reopened: false
     }
     socket.emit('raise_doubt', doubtObj)
     setMyDoubts(prev => [doubtObj, ...prev])
+    setAllRoomDoubts(prev => [doubtObj, ...prev])
     
     setDoubtStatus('success')
     setDoubtText('')
+    setCustomTopic('')
     setTimeout(() => {
       setShowDoubtModal(false)
       setDoubtStatus(null)
@@ -717,6 +782,92 @@ function StudentRoomPage() {
                 </p>
               </div>
 
+              {/* Active Classroom Doubts Feed (Peer Upvoting) */}
+              {allRoomDoubts.filter(d => d.userId !== user?._id).length > 0 && (
+                <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--card-shadow)', border: '1px solid var(--border-color)', marginBottom: '24px', width: '100%', boxSizing: 'border-box' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    🔥 Classroom Doubts Log (Active & Resolved)
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {allRoomDoubts.filter(d => d.userId !== user?._id).map((d, idx) => {
+                      const hasUpvoted = d.upvotes && d.upvotes.includes(user?._id)
+                      const isResolved = d.resolved && !d.reopened
+                      return (
+                        <div key={d.doubtId || idx} style={{
+                          padding: '14px 16px',
+                          background: 'var(--bg-primary)',
+                          borderRadius: '12px',
+                          border: `1px solid ${isResolved ? '#10b981' : 'var(--border-color)'}`,
+                          opacity: isResolved ? 0.85 : 1,
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          flexWrap: 'wrap',
+                          gap: '12px'
+                        }}>
+                          <div style={{ flex: '1 1 250px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px', flexWrap: 'wrap' }}>
+                              <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                {d.topic || '#General'}
+                              </span>
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                {d.userName} asked at {new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                              {isResolved && (
+                                <span style={{ background: '#d1fae5', color: '#065f46', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                  ✅ Resolved
+                                </span>
+                              )}
+                            </div>
+                            <p style={{ margin: 0, fontWeight: '600', color: 'var(--text-primary)' }}>
+                              "{d.message}"
+                            </p>
+                            {isResolved && d.reply && (
+                              <p style={{ margin: '6px 0 0 0', fontSize: '12px', color: '#059669' }}>
+                                💬 Teacher Reply: {d.reply}
+                              </p>
+                            )}
+                          </div>
+                          {isResolved ? (
+                            <span style={{
+                              padding: '6px 14px',
+                              borderRadius: '20px',
+                              fontSize: '12px',
+                              fontWeight: '700',
+                              background: '#ecfdf5',
+                              color: '#059669',
+                              border: '1px solid #10b981'
+                            }}>
+                              ✅ Closed {d.upvotes?.length > 0 && `(👍 ${d.upvotes.length})`}
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => socket.emit('upvote_doubt', { roomCode: room.code, doubtId: d.doubtId, userId: user?._id })}
+                              style={{
+                                padding: '8px 16px',
+                                borderRadius: '20px',
+                                fontSize: '13px',
+                                fontWeight: '700',
+                                background: hasUpvoted ? '#fef3c7' : 'var(--bg-card)',
+                                color: hasUpvoted ? '#d97706' : 'var(--text-primary)',
+                                border: `1px solid ${hasUpvoted ? '#f59e0b' : 'var(--border-color)'}`,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              👍 I have this doubt too ({d.upvotes?.length || 0})
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* My Raised Doubts Log */}
               {myDoubts.length > 0 && (
                 <div style={{ background: 'var(--bg-card)', borderRadius: '16px', padding: '24px', boxShadow: 'var(--card-shadow)', border: '1px solid var(--border-color)', marginBottom: '24px', width: '100%', boxSizing: 'border-box' }}>
@@ -731,35 +882,102 @@ function StudentRoomPage() {
                         borderRadius: '12px',
                         border: '1px solid var(--border-color)',
                         display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        flexWrap: 'wrap',
-                        gap: '12px'
+                        flexDirection: 'column',
+                        gap: '10px'
                       }}>
-                        <div>
-                          <p style={{ margin: '0 0 6px 0', fontWeight: '600', color: 'var(--text-primary)' }}>
-                            "{d.message}"
-                          </p>
-                          <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
-                            {new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                              <span style={{ background: '#e0e7ff', color: '#4338ca', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: 'bold' }}>
+                                {d.topic || '#General'}
+                              </span>
+                              <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                {new Date(d.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            </div>
+                            <p style={{ margin: '0 0 6px 0', fontWeight: '600', color: 'var(--text-primary)' }}>
+                              "{d.message}"
+                            </p>
+                          </div>
+                          <span style={{
+                            padding: '6px 14px',
+                            borderRadius: '20px',
+                            fontSize: '13px',
+                            fontWeight: '700',
+                            background: d.reopened ? '#fff7ed' : (d.resolved ? '#d1fae5' : '#fef3c7'),
+                            color: d.reopened ? '#c2410c' : (d.resolved ? '#059669' : '#d97706'),
+                            border: `1px solid ${d.reopened ? '#fdba74' : (d.resolved ? '#10b981' : '#f59e0b')}`
+                          }}>
+                            {d.reopened ? '🔄 Re-Opened (Priority Review)' : (d.resolved ? '✅ Resolved by Teacher' : '⏳ Pending Review')}
                           </span>
                         </div>
-                        <span style={{
-                          padding: '6px 14px',
-                          borderRadius: '20px',
-                          fontSize: '13px',
-                          fontWeight: '700',
-                          background: d.resolved ? '#d1fae5' : '#fef3c7',
-                          color: d.resolved ? '#059669' : '#d97706',
-                          border: `1px solid ${d.resolved ? '#10b981' : '#f59e0b'}`
-                        }}>
-                          {d.resolved ? '✅ Resolved by Teacher' : '⏳ Pending Review'}
-                        </span>
                         {d.reply && (
-                          <div style={{ width: '100%', marginTop: '10px', padding: '10px 14px', background: '#ecfdf5', borderRadius: '8px', borderLeft: '4px solid #10b981', color: '#065f46', fontSize: '13px' }}>
+                          <div style={{ width: '100%', padding: '10px 14px', background: '#ecfdf5', borderRadius: '8px', borderLeft: '4px solid #10b981', color: '#065f46', fontSize: '13px', boxSizing: 'border-box' }}>
                             <strong>💬 Teacher Reply:</strong> {d.reply}
                           </div>
                         )}
+                        {/* Re-Open Safety Valve Buttons when marked resolved */}
+                        {(() => {
+                          const isAckByMe = Array.isArray(d.acknowledgedUsers) ? d.acknowledgedUsers.includes(user?._id) : (d.acknowledged && d.userId === user?._id)
+                          if (d.resolved && !d.reopened && !isAckByMe) {
+                            return (
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '4px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', flexWrap: 'wrap' }}>
+                                <span style={{ fontSize: '12px', color: 'var(--text-secondary)', alignSelf: 'center', marginRight: 'auto' }}>
+                                  Was your exact question answered?
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setMyDoubts(prev => prev.map(item => item.doubtId === d.doubtId ? {
+                                      ...item,
+                                      acknowledgedUsers: [...(Array.isArray(item.acknowledgedUsers) ? item.acknowledgedUsers : []), user?._id]
+                                    } : item))
+                                    setAllRoomDoubts(prev => prev.map(item => item.doubtId === d.doubtId ? {
+                                      ...item,
+                                      acknowledgedUsers: [...(Array.isArray(item.acknowledgedUsers) ? item.acknowledgedUsers : []), user?._id]
+                                    } : item))
+                                    socket.emit('acknowledge_doubt', { roomCode: room.code, doubtId: d.doubtId, userId: user?._id })
+                                  }}
+                                  style={{
+                                    padding: '6px 14px',
+                                    background: '#10b981',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  👍 Got it, thanks!
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    socket.emit('reopen_doubt', { roomCode: room.code, doubtId: d.doubtId, reason: 'Specific nuance not covered' })
+                                  }}
+                                  style={{
+                                    padding: '6px 14px',
+                                    background: '#fff7ed',
+                                    color: '#c2410c',
+                                    border: '1px solid #fdba74',
+                                    borderRadius: '6px',
+                                    fontSize: '12px',
+                                    fontWeight: '600',
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  🙋 Actually, my nuance wasn't answered (Re-Open)
+                                </button>
+                              </div>
+                            )
+                          } else if (d.resolved && !d.reopened && isAckByMe) {
+                            return (
+                              <div style={{ marginTop: '4px', paddingTop: '10px', borderTop: '1px dashed var(--border-color)', color: '#059669', fontSize: '13px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span>✅ You acknowledged this resolution. Glad your doubt was clarified!</span>
+                              </div>
+                            )
+                          }
+                          return null
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -1044,8 +1262,50 @@ function StudentRoomPage() {
             ) : (
               <>
                 <p style={{ margin: '0 0 16px 0', color: 'var(--text-secondary)', fontSize: '14px' }}>
-                  The teacher will be notified that you have a doubt at this exact moment. You can optionally add a quick note.
+                  The teacher will be notified that you have a doubt at this exact moment. You can optionally select a topic tag and add a quick note.
                 </p>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '13px', fontWeight: '600', color: 'var(--text-primary)', marginBottom: '8px' }}>
+                    Choose or Type Topic Tag:
+                  </label>
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+                    {['#General', '#Concept', '#Formula', '#Example'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => { setDoubtTopic(tag); setCustomTopic('') }}
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '16px',
+                          border: `1px solid ${doubtTopic === tag && !customTopic ? '#10b981' : 'var(--border-color)'}`,
+                          background: doubtTopic === tag && !customTopic ? '#ecfdf5' : 'var(--bg-main)',
+                          color: doubtTopic === tag && !customTopic ? '#059669' : 'var(--text-secondary)',
+                          fontSize: '12px',
+                          fontWeight: '600',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                  <input
+                    type="text"
+                    value={customTopic}
+                    onChange={(e) => setCustomTopic(e.target.value)}
+                    placeholder="Or type custom topic (e.g. #LearningRate)"
+                    style={{
+                      width: '100%',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: '1px solid var(--border-color)',
+                      background: 'var(--bg-main)',
+                      color: 'var(--text-primary)',
+                      fontSize: '13px',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
                 <textarea
                   value={doubtText}
                   onChange={(e) => setDoubtText(e.target.value)}
@@ -1068,6 +1328,7 @@ function StudentRoomPage() {
                     onClick={() => {
                       setShowDoubtModal(false)
                       setDoubtText('')
+                      setCustomTopic('')
                     }}
                     style={{
                       padding: '10px 16px',

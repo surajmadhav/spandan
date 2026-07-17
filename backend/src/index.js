@@ -539,12 +539,34 @@ io.on('connection', (socket) => {
 
   // Doubt Raising System
   socket.on('raise_doubt', (data) => {
-    console.log(`Doubt raised by ${data.userName} in room ${data.roomCode}: ${data.message}`)
+    console.log(`Doubt raised by ${data.userName} in room ${data.roomCode}: [${data.topic || '#General'}] ${data.message}`)
     const list = roomDoubtsStore.get(data.roomCode) || []
-    const doubtObj = { ...data, resolved: false, reply: null }
+    const doubtObj = {
+      ...data,
+      topic: data.topic || '#General',
+      upvotes: Array.isArray(data.upvotes) ? data.upvotes : [],
+      resolved: false,
+      reply: null,
+      reopened: false,
+      reopenCount: 0
+    }
     list.unshift(doubtObj)
     roomDoubtsStore.set(data.roomCode, list)
     io.to(data.roomCode).emit('doubt_raised', doubtObj)
+  })
+
+  socket.on('upvote_doubt', (data) => {
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const d = list.find(item => item.doubtId === data.doubtId)
+    if (d && data.userId) {
+      d.upvotes = Array.isArray(d.upvotes) ? d.upvotes : []
+      if (d.upvotes.includes(data.userId)) {
+        d.upvotes = d.upvotes.filter(id => id !== data.userId)
+      } else {
+        d.upvotes.push(data.userId)
+      }
+      io.to(data.roomCode).emit('doubt_upvoted', d)
+    }
   })
 
   socket.on('resolve_doubt', (data) => {
@@ -553,10 +575,68 @@ io.on('connection', (socket) => {
     const d = list.find(item => item.doubtId === data.doubtId)
     if (d) {
       d.resolved = true
+      d.reopened = false
       d.reply = data.reply || null
       d.resolvedAt = new Date().toISOString()
+      d.resolvedType = 'single'
     }
     io.to(data.roomCode).emit('doubt_resolved', data)
+  })
+
+  socket.on('bulk_resolve_doubts', (data) => {
+    console.log(`Bulk resolving ${data?.doubtIds?.length || 0} doubts in room ${data.roomCode}`)
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const doubtIds = Array.isArray(data.doubtIds) ? data.doubtIds : []
+    const reply = data.reply || 'Resolved during live class explanation'
+    const resolvedAt = new Date().toISOString()
+
+    doubtIds.forEach(id => {
+      const d = list.find(item => item.doubtId === id)
+      if (d) {
+        d.resolved = true
+        d.reopened = false
+        d.reply = reply
+        d.resolvedAt = resolvedAt
+        d.resolvedType = 'bulk'
+      }
+    })
+    io.to(data.roomCode).emit('doubts_bulk_resolved', { doubtIds, reply, resolvedAt })
+  })
+
+  socket.on('reopen_doubt', (data) => {
+    console.log(`Doubt reopened in room ${data.roomCode}: ${data.doubtId} (${data.reason})`)
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const d = list.find(item => item.doubtId === data.doubtId)
+    if (d) {
+      d.resolved = false
+      d.reopened = true
+      d.reopenCount = (d.reopenCount || 0) + 1
+      d.reopenReason = data.reason || 'Specific nuance not covered'
+      d.timestamp = new Date().toISOString()
+      
+      // Move to top of the list so teacher sees it immediately
+      const filtered = list.filter(item => item.doubtId !== data.doubtId)
+      filtered.unshift(d)
+      roomDoubtsStore.set(data.roomCode, filtered)
+      io.to(data.roomCode).emit('doubt_reopened', d)
+    }
+  })
+
+  socket.on('acknowledge_doubt', (data) => {
+    console.log(`Doubt acknowledged in room ${data.roomCode}: ${data.doubtId} by user ${data.userId}`)
+    const list = roomDoubtsStore.get(data.roomCode) || []
+    const d = list.find(item => item.doubtId === data.doubtId)
+    if (d) {
+      if (!Array.isArray(d.acknowledgedUsers)) d.acknowledgedUsers = []
+      if (data.userId && !d.acknowledgedUsers.includes(data.userId)) {
+        d.acknowledgedUsers.push(data.userId)
+      }
+      const totalStudents = 1 + (Array.isArray(d.upvotes) ? d.upvotes.length : 0)
+      if (d.acknowledgedUsers.length >= totalStudents || (totalStudents === 1 && (!data.userId || data.userId === d.userId))) {
+        d.acknowledged = true
+      }
+      io.to(data.roomCode).emit('doubt_acknowledged', { doubtId: d.doubtId, userId: data.userId, acknowledgedUsers: d.acknowledgedUsers, acknowledged: d.acknowledged })
+    }
   })
 
   socket.on('disconnect', () => {

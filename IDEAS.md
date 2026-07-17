@@ -34,7 +34,9 @@
 - **Live Transcription Integration**: Potentially utilizing YouTube Live streams to transcribe teacher speech directly into Spandan.
 - **Pre-assessment Tools**: Using Spandan to assign pre-work, helping teachers understand a cohort's baseline knowledge before the topic begins.
 
-### 🙋‍♂️ Real-Time Feedback & Doubt System
-- **Teacher Dashboard**: Teachers receive instant, real-time feedback on classroom comprehension.
-- **Doubt Raising System**: Many students are too shy to interrupt a large class. Spandan includes a feature where a student can flag a doubt at a specific timestamp/minute. 
-- **TA Escalation**: Similar to NPTEL, these doubt flags can be routed to the Teacher or Teaching Assistants (TAs) for review without disrupting the live lecture flow.
+### 🙋‍♂️ Real-Time Feedback & Advanced Doubt Scaling System
+- **Teacher Dashboard & View Modes**: Teachers receive instant, real-time feedback on classroom comprehension with toggleable **List View** and **Topic Clustering (`🗂️ Group by Topic`)** modes.
+- **Topic Clustering & Bulk Resolution**: In large crowds (300+ students), similar questions are clustered under topics (`#LearningRate`, `#Concept`, `#Formula`, etc.). Teachers can select entire clusters and **Bulk Resolve (`⚡ Resolve Selected at Once`)** with a shared explanation note.
+- **Peer Upvoting (`👍 I have this doubt too`)**: Students see a live peer feed of classroom doubts and can upvote existing questions instead of raising duplicate doubts, helping teachers prioritize what most students are confused about.
+- **Re-Open Safety Valve (`🙋 Re-Open`)**: If a teacher bulk-resolves a topic but misses a student's specific nuance, the student can click **Re-Open**. Re-opened doubts jump to the top of the teacher's dashboard with a vibrant orange priority badge (`🔄 Re-Opened`), ensuring unique student blockers are never accidentally lost.
+- **TA Escalation**: Similar to NPTEL, these doubt flags can also be routed to Teaching Assistants (TAs) for review without disrupting the live lecture flow.
