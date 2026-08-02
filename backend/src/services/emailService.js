@@ -96,7 +96,7 @@ export const sendRegistrationOtp = async (email, name, otp) => {
 
   try {
     // If running locally without a real SMTP password, bypass the email so the dev isn't locked out
-    if (config.nodeEnv === 'development' && (!config.smtpPassword || config.smtpPassword === 'your-gmail-app-password')) {
+    if (config.nodeEnv !== 'production' && (!config.smtpPassword || config.smtpPassword === 'your-gmail-app-password')) {
       console.log(`[DEMO MODE] OTP email bypassed for ${email}. The OTP is: ${otp}`)
       return true
     }
