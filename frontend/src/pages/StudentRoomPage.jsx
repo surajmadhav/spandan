@@ -1197,52 +1197,59 @@ function StudentRoomPage() {
         </div>
       )}
 
-      {/* Contextual Doubt Anchoring: passive confusion signal */}
-      <ImLostButton
-        roomId={room?._id}
-        roomCode={roomCode}
-        segmentIndex={liveSegmentIndex}
-        transcriptOffsetMs={liveTranscriptOffsetMs}
-      />
-      <ConfusionResolvedPrompt roomCode={roomCode} />
+      {/* Floating Action Container */}
+      <div style={{
+        position: 'fixed',
+        bottom: '30px',
+        right: '30px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '12px',
+        zIndex: 100
+      }}>
+        {/* Contextual Doubt Anchoring: passive confusion signal */}
+        <ImLostButton
+          roomId={room?._id}
+          roomCode={roomCode}
+          segmentIndex={liveSegmentIndex}
+          transcriptOffsetMs={liveTranscriptOffsetMs}
+        />
+        <ConfusionResolvedPrompt roomCode={roomCode} />
 
-      {/* Q&A / Doubts Floating Button */}
-      <button
-        onClick={() => setShowDoubtsPanel(true)}
-        style={{
-          position: 'fixed',
-          bottom: '30px',
-          right: '30px',
-          padding: '16px 24px',
-          background: (allRoomDoubts.length > 0 || myDoubts.length > 0) ? '#ef4444' : '#10b981',
-          color: '#ffffff',
-          border: 'none',
-          borderRadius: '30px',
-          fontSize: '16px',
-          fontWeight: 'bold',
-          cursor: 'pointer',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          zIndex: 100
-        }}
-      >
-        <span style={{ fontSize: '20px' }}>🙋‍♂️</span> Q&A / Doubts
-        {(allRoomDoubts.length > 0) && (
-          <span style={{
-            background: 'white',
-            color: '#ef4444',
-            borderRadius: '12px',
-            padding: '2px 8px',
-            fontSize: '12px',
+        {/* Q&A / Doubts Floating Button */}
+        <button
+          onClick={() => setShowDoubtsPanel(true)}
+          style={{
+            padding: '16px 24px',
+            background: (allRoomDoubts.length > 0 || myDoubts.length > 0) ? '#ef4444' : '#10b981',
+            color: '#ffffff',
+            border: 'none',
+            borderRadius: '30px',
+            fontSize: '16px',
             fontWeight: 'bold',
-            marginLeft: '4px'
-          }}>
-            {allRoomDoubts.length}
-          </span>
-        )}
-      </button>
+            cursor: 'pointer',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}
+        >
+          <span style={{ fontSize: '20px' }}>🙋‍♂️</span> Q&A / Doubts
+          {(allRoomDoubts.length > 0) && (
+            <span style={{
+              background: 'white',
+              color: '#ef4444',
+              borderRadius: '12px',
+              padding: '2px 8px',
+              fontSize: '12px',
+              fontWeight: 'bold',
+              marginLeft: '4px'
+            }}>
+              {allRoomDoubts.length}
+            </span>
+          )}
+        </button>
+      </div>
 
       {/* Doubts Sliding Panel */}
       {showDoubtsPanel && (
@@ -1585,20 +1592,7 @@ function StudentRoomPage() {
         </div>
       )}
 
-=======
-        {/* Contextual Doubt-Anchored Polling: floating "I'm lost" button */}
-        <div className="imlost-floater">
-          <ImLostButton
-            roomId={room?._id}
-            roomCode={room?.code}
-            disabled={!room?.isActive}
-            getCurrentSegment={() => ({ segmentIndex: liveSegmentIndex, transcriptOffsetMs: liveTranscriptOffsetMs })}
-          />
-        </div>
 
-        {/* RESOLVED PROMPT: student-side popup when teacher closes confusion */}
-        <ConfusionResolvedPrompt roomId={room?._id} />
->>>>>>> rashmi-pr
     </div>
   )
 }

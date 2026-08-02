@@ -44,6 +44,7 @@ function RoomDetailPage() {
   const [error, setError] = useState('')
   const [copied, setCopied] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showAnalyticsPanel, setShowAnalyticsPanel] = useState(false)
   const settingsRef = useRef(null)
   const transcriptRef = useRef(null)
 
@@ -1461,7 +1462,7 @@ function RoomDetailPage() {
               cursor: 'pointer',
               fontSize: '18px'
             }}>
-              📋
+              ←
             </button>
 
             <div style={{
@@ -1510,6 +1511,7 @@ function RoomDetailPage() {
 
             <div style={{ flex: 1, minWidth: 0, display: isMobile ? 'none' : 'block' }} />
 
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             {/* Segment Timer Display */}
             {isRecording && (
               <div style={{
@@ -1655,6 +1657,30 @@ function RoomDetailPage() {
               </button>
             )}
 
+            {/* Confusion Analytics Button */}
+            {!isEnded && (
+              <button 
+                onClick={() => setShowAnalyticsPanel(!showAnalyticsPanel)} 
+                style={{
+                  padding: '8px 16px',
+                  background: 'var(--nav-hover)',
+                  color: 'var(--text-primary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  position: 'relative',
+                  transition: 'background 0.2s'
+                }}
+              >
+                📉 Confusion Analytics
+              </button>
+            )}
+
             {/* Settings Dropdown */}
             <div style={{ position: 'relative' }} ref={settingsRef}>
               <button
@@ -1715,6 +1741,7 @@ function RoomDetailPage() {
                 End Room
               </button>
             )}
+            </div>
           </div>
 
           {/* Microphone and Transcription Row - 30/70 Split */}
@@ -2225,16 +2252,59 @@ function RoomDetailPage() {
 
       {/* Contextual Doubt-Anchored Polling: live confusion signals for the teacher */}
       {room?._id && (
-        <div className="confusion-stack" style={{ padding: '0 32px 24px', maxWidth: '420px', marginLeft: 'auto' }}>
-          {/* Milestone 3: ONE live card -- tier-styled, animated count, status pill */}
-          <ConfusionAlertCard roomId={room._id} hasTranscript={!!room?.roomStartedAt} />
-          {/* Milestone 3: ranked topic heat bars */}
-          <TopicHeatmap roomId={room._id} />
-          {/* Milestone 3: history-only timeline (replaces legacy ConfusionSpikePanel live card) */}
-          <ConfusionTimeline roomId={room._id} />
-          {/* Topic markers -- teacher sets "what we were on at this time" so spike cards show real topics */}
-          <TopicMarkerBar roomId={room._id} roomCode={room.code} editable />
-        </div>
+        <>
+          {/* Analytics Sliding Panel */}
+          {showAnalyticsPanel && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              right: 0,
+              width: isMobile ? '100%' : '420px',
+              height: '100%',
+              background: 'var(--bg-card)',
+              boxShadow: '-4px 0 24px rgba(0,0,0,0.2)',
+              zIndex: 2000,
+              display: 'flex',
+              flexDirection: 'column',
+              borderLeft: '1px solid var(--border-color)',
+              transition: 'transform 0.3s ease-in-out'
+            }}>
+              <div style={{
+                padding: '20px',
+                borderBottom: '1px solid var(--border-color)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <h2 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  📉 Confusion Analytics
+                </h2>
+                <button 
+                  onClick={() => setShowAnalyticsPanel(false)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    padding: '4px'
+                  }}
+                >&times;</button>
+              </div>
+              
+              <div className="confusion-stack" style={{ padding: '24px', overflowY: 'auto', flex: 1, display: 'block' }}>
+                {/* Milestone 3: ONE live card -- tier-styled, animated count, status pill */}
+                <ConfusionAlertCard roomId={room._id} hasTranscript={!!room?.roomStartedAt} />
+                {/* Milestone 3: ranked topic heat bars */}
+                <TopicHeatmap roomId={room._id} />
+                {/* Milestone 3: history-only timeline (replaces legacy ConfusionSpikePanel live card) */}
+                <ConfusionTimeline roomId={room._id} />
+                {/* Topic markers -- teacher sets "what we were on at this time" so spike cards show real topics */}
+                <TopicMarkerBar roomId={room._id} roomCode={room.code} editable />
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {/* Question Approval Popup */}

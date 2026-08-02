@@ -370,18 +370,42 @@ export async function resolveEventByTeacher (eventId) {
  * process lifetime. (Restart loss is acceptable for the demo -- the teacher
  * dashboard re-fetches event.reopenedCount from Mongo on reconnect.)
  */
-const feedbackTallies = new Map() // eventId -> { understood: n, stillConfused: n }
+const feedbackTallies = new Map() // eventId -> Map<studentHash, answer>
 
-export function recordFeedback (eventId, answer) {
-  const tally = feedbackTallies.get(String(eventId)) || { understood: 0, stillConfused: 0 }
-  if (answer === 'understood') tally.understood += 1
-  else if (answer === 'still_confused') tally.stillConfused += 1
-  feedbackTallies.set(String(eventId), tally)
-  return { ...tally }
+export function recordFeedback (eventId, studentHash, answer) {
+  let studentMap = feedbackTallies.get(String(eventId))
+  if (!studentMap) {
+    studentMap = new Map()
+    feedbackTallies.set(String(eventId), studentMap)
+  }
+  if (studentHash) {
+    studentMap.set(studentHash, answer)
+  }
+  return getFeedbackTally(eventId)
 }
 
 export function getFeedbackTally (eventId) {
-  return feedbackTallies.get(String(eventId)) || { understood: 0, stillConfused: 0 }
+  const studentMap = feedbackTallies.get(String(eventId))
+  let understood = 0
+  let stillConfused = 0
+  if (studentMap) {
+    for (const ans of studentMap.values()) {
+      if (ans === 'understood') understood++
+      else if (ans === 'still_confused') stillConfused++
+    }
+  }
+  return { understood, stillConfused }
+}
+
+export function getUnderstoodStudents (eventId) {
+  const studentMap = feedbackTallies.get(String(eventId))
+  const understood = []
+  if (studentMap) {
+    for (const [hash, ans] of studentMap.entries()) {
+      if (ans === 'understood') understood.push(hash)
+    }
+  }
+  return understood
 }
 
 /**
@@ -428,5 +452,6 @@ export default {
   reopenEvent,
   recordFeedback,
   getFeedbackTally,
+  getUnderstoodStudents,
   formatForClient
 }

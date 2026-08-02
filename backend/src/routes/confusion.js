@@ -1,4 +1,5 @@
 import express from 'express'
+import crypto from 'crypto'
 import { authenticate, authorize } from '../middleware/auth.js'
 import { Room } from '../models/index.js'
 import {
@@ -150,7 +151,7 @@ router.post('/event/:eventId/request-feedback', authenticate, authorize('teacher
     if (!evt) {
       return res.status(404).json({ success: false, error: 'Confusion event not found' })
     }
-    const room = await Room.findById(evt.roomId).select('code teacher').lean()
+    const room = await Room.findById(evt.roomId).select('code teacher doubtSalt').lean()
     if (!room) return res.status(404).json({ success: false, error: 'Room not found' })
     if (String(room.teacher) !== String(req.user._id) && req.user.role !== 'admin') {
       return res.status(403).json({ success: false, error: 'Only the room teacher can request feedback' })
@@ -163,8 +164,22 @@ router.post('/event/:eventId/request-feedback', authenticate, authorize('teacher
         topic: evt.topicLabel || 'General Confusion',
         expectedRespondents: evt.confusedStudentCount || (evt.studentIds ? evt.studentIds.length : 0)
       }
-      console.log('[confusion] request-feedback emit confusion:resolved to room', room.code, payload)
-      io.to(room.code).emit('confusion:resolved', payload)
+      
+      const understoodStudents = (await import('../services/confusionEventService.js')).getUnderstoodStudents(evt._id)
+      const sockets = await io.in(room.code).fetchSockets()
+      let sentCount = 0
+      for (const socket of sockets) {
+        if (socket.data?.role === 'teacher') {
+          socket.emit('confusion:resolved', payload)
+        } else if (socket.data?.userId && evt.studentIds && evt.studentIds.length > 0) {
+          const studentHash = crypto.createHmac('sha256', room.doubtSalt).update(String(socket.data.userId)).digest('hex')
+          if (evt.studentIds.includes(studentHash) && !understoodStudents.includes(studentHash)) {
+            socket.emit('confusion:resolved', payload)
+            sentCount++
+          }
+        }
+      }
+      console.log(`[confusion] request-feedback sent to ${sentCount} students in room ${room.code}`)
     }
     res.json({ success: true, event: formatForClient(evt) })
   } catch (err) {
@@ -200,16 +215,19 @@ router.post('/event/:eventId/feedback', authenticate, async (req, res) => {
     if (!['understood', 'still_confused'].includes(answer)) {
       return res.status(400).json({ success: false, error: 'answer must be "understood" or "still_confused"' })
     }
-    const tally = recordFeedback(eventId, answer)
-    let evt = null
+    
+    let evt = await ConfusionEvent.findById(eventId).lean()
+    if (!evt) {
+      return res.status(404).json({ success: false, error: 'Confusion event not found' })
+    }
+    
+    const room = await Room.findById(evt.roomId).select('code doubtSalt').lean()
+    const studentHash = crypto.createHmac('sha256', room.doubtSalt).update(String(req.user._id)).digest('hex')
+    const tally = recordFeedback(eventId, studentHash, answer)
+    
     if (answer === 'still_confused') {
       // still_confused: keep the event active. No auto-close.
       evt = await reopenEvent(eventId)
-    } else {
-      evt = await ConfusionEvent.findById(eventId).lean()
-    }
-    if (!evt) {
-      return res.status(404).json({ success: false, error: 'Confusion event not found' })
     }
     // RECOVERY FLOW: compute expected respondents. If tally.understood has
     // reached the expected count, auto-close the event.
@@ -222,7 +240,6 @@ router.post('/event/:eventId/feedback', authenticate, async (req, res) => {
         autoClosed = true
       }
     }
-    const room = await Room.findById(evt.roomId).select('code').lean()
     const io = req.app.get('io')
     if (io && room?.code) {
       const needsMoreExplanation = tally.stillConfused > 0

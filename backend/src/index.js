@@ -819,7 +819,6 @@ io.on('connection', (socket) => {
       io.to(data.roomCode).emit('teacher:topic-delete', { markerId: data.markerId })
     } catch (err) {
       console.error('[socket] teacher:topic-delete error:', err.message)
->>>>>>> rashmi-pr
     }
   })
 
