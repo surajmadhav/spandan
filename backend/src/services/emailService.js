@@ -95,8 +95,8 @@ export const sendRegistrationOtp = async (email, name, otp) => {
   }
 
   try {
-    await transporter.sendMail(mailOptions)
-    console.log(`OTP email sent to ${email}`)
+    // Demo mode: mock OTP email sending
+    console.log(`[DEMO MODE] OTP email bypassed for ${email}. The OTP is: ${otp}`)
     return true
   } catch (error) {
     console.error(`Failed to send OTP email to ${email}:`, error.message)
