@@ -95,6 +95,11 @@ export const sendRegistrationOtp = async (email, name, otp) => {
   }
 
   try {
+    // If running locally without an SMTP password, bypass the email so the dev isn't locked out
+    if (config.nodeEnv === 'development' && !config.smtpPassword) {
+      console.log(`[DEMO MODE] OTP email bypassed for ${email}. The OTP is: ${otp}`)
+      return true
+    }
     await transporter.sendMail(mailOptions)
     console.log(`OTP email sent to ${email}`)
     return true
